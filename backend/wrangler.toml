@@ -1,0 +1,12 @@
+name = "viva-backend"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+LLM_PROVIDER = "anthropic"
+# LLM_MODEL = "claude-sonnet-5-5"
+# Set this to the exact origin of your GitHub Pages site (no path, no trailing slash).
+ALLOWED_ORIGINS = "https://YOUR-USERNAME.github.io"
+
+# The API key is a secret and must never be written in this file:
+#   npx wrangler secret put LLM_API_KEY

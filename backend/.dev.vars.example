@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `npx wrangler dev`. .dev.vars is git-ignored.
+LLM_API_KEY=your-key-here
+ALLOWED_ORIGINS=http://localhost:5173
