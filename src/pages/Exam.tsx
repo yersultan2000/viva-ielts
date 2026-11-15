@@ -406,7 +406,11 @@ export function Exam({ route }: { route: Route }) {
                 <Icon name={online ? 'check' : 'alert'} />
                 {online ? 'You are online.' : 'You are offline. Speech recognition in most browsers needs a connection.'}
               </li>
-              <li className="ok"><Icon name="mic" />Your browser will ask for the microphone when you start. Recordings stay on this device.</li>
+              {sp.transcriptOnly ? (
+                <li className="warn"><Icon name="alert" />On phones and tablets the browser cannot record audio while it recognises speech. Your answers are transcribed and assessed, but there are no recordings and pauses and pitch are not measured. Use a computer for the full analysis.</li>
+              ) : (
+                <li className="ok"><Icon name="mic" />Your browser will ask for the microphone when you start. Recordings stay on this device.</li>
+              )}
             </ul>
           </section>
 
@@ -482,7 +486,7 @@ export function Exam({ route }: { route: Route }) {
               <p className="examiner-status">{phase === 'loading' || phase === 'thinking' || phase === 'assessing' ? <span className="spinner" aria-hidden="true" /> : null}{status}</p>
             </div>
             <span className={`mic-chip ${listening && !typing ? 'live' : ''}`}>
-              <span className="dot" />{listening && !typing ? 'Recording' : sp.micOn ? 'Microphone ready' : 'Microphone off'}
+              <span className="dot" />{listening && !typing ? (sp.micOn ? 'Recording' : 'Listening') : sp.micOn || sp.transcriptOnly ? 'Microphone ready' : 'Microphone off'}
             </span>
           </div>
 
@@ -526,11 +530,14 @@ export function Exam({ route }: { route: Route }) {
                 </label>
               ) : (
                 <>
-                  <Waveform getLevel={sp.getLevel} active={listening} />
+                  {sp.micOn ? <Waveform getLevel={sp.getLevel} active={listening} /> : null}
                   <p className="live serif" aria-label="Live transcript">
                     {sp.text} <span className="interim">{sp.interim}</span>
                     {!sp.text && !sp.interim ? <span className="muted">{silentHint ? 'Nothing heard yet. Check that your microphone is not muted, then speak.' : 'Your words appear here as you speak.'}</span> : null}
                   </p>
+                  {silentHint && !sp.text && !sp.interim ? (
+                    <Button size="sm" icon="keyboard" onClick={() => { r.current.forceTyped = true; setForceTyped(true); }}>Type my answers instead</Button>
+                  ) : null}
                 </>
               )}
             </div>

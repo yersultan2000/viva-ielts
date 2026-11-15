@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, micSupported } from './audio';
 import { countFillers, tokens } from './metrics';
-import { Recognizer, recognitionSupported } from './speech';
+import { Recognizer, micIsExclusive, recognitionSupported } from './speech';
 import type { AnswerMetrics } from './types';
 
 export interface Capture {
@@ -35,6 +35,8 @@ export function useSpeaking(analyseAudio: boolean) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [micOn, setMicOn] = useState(false);
   const canRecognise = recognitionSupported();
+  /** True on phones and tablets: speech is recognised but no audio is captured, so there is no recording, pause or pitch data. */
+  const transcriptOnly = canRecognise && analyseAudio && micSupported() && micIsExclusive();
 
   const set = (s: SpeakStatus) => { statusRef.current = s; setStatus(s); };
 
@@ -50,6 +52,18 @@ export function useSpeaking(analyseAudio: boolean) {
   const prepare = useCallback(async (): Promise<'ok' | 'off' | 'failed'> => {
     setError('');
     if (!analyseAudio || !micSupported()) return 'off';
+    if (transcriptOnly) {
+      // Ask for permission now, while we are still inside the tap that started the test,
+      // then let go of the microphone so that speech recognition can have it.
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+        probe.getTracks().forEach((t) => t.stop());
+        return 'off';
+      } catch (e: any) {
+        setError(e?.name === 'NotAllowedError' ? ERRORS['not-allowed'] : e?.name === 'NotFoundError' ? ERRORS['audio-capture'] : 'The microphone could not be opened.');
+        return 'failed';
+      }
+    }
     try {
       if (!mic.current) mic.current = new Mic();
       await mic.current.open();
@@ -61,7 +75,7 @@ export function useSpeaking(analyseAudio: boolean) {
       setError(e?.name === 'NotAllowedError' ? ERRORS['not-allowed'] : e?.name === 'NotFoundError' ? ERRORS['audio-capture'] : 'The microphone could not be opened.');
       return 'failed';
     }
-  }, [analyseAudio]);
+  }, [analyseAudio, transcriptOnly]);
 
   const start = useCallback((skipRecognition = false) => {
     setText(''); setInterim(''); setElapsedMs(0);
@@ -98,15 +112,18 @@ export function useSpeaking(analyseAudio: boolean) {
     if (statusRef.current === 'paused') pausedMs.current += Date.now() - pausedAt.current;
     const wall = Date.now() - startedAt.current - pausedMs.current;
     set('idle');
+    const r0 = rec.current;
     const [seg, heard] = await Promise.all([
       mic.current ? mic.current.end() : Promise.resolve(null),
-      rec.current ? rec.current.stop() : Promise.resolve({ text: '', confidence: null as number | null }),
+      r0 ? r0.stop() : Promise.resolve({ text: '', confidence: null as number | null }),
     ]);
+    // Without audio capture, time the answer from the first to the last recognised words.
+    const span = r0 && r0.firstUpdate ? Math.min(wall, r0.lastUpdate - r0.firstUpdate + 800) : 0;
     rec.current = null;
     const typed = !!typedText?.trim() && !heard.text;
     const finalText = (heard.text || typedText || '').trim();
     const words = tokens(finalText).length;
-    const durationMs = typed ? null : seg && seg.spoke ? seg.durationMs : heard.text ? wall : null;
+    const durationMs = typed ? null : seg && seg.spoke ? seg.durationMs : heard.text ? (span >= 1500 ? span : wall) : null;
     const metrics: AnswerMetrics = {
       words,
       durationMs,
@@ -143,7 +160,7 @@ export function useSpeaking(analyseAudio: boolean) {
     return { ms: Date.now() - r.lastUpdate, spoke: true };
   }, []);
 
-  return { status, text, interim, error, setError, elapsedMs, micOn, canRecognise, prepare, start, pause, resume, stop, release, getLevel, getSilence };
+  return { status, text, interim, error, setError, elapsedMs, micOn, canRecognise, transcriptOnly, prepare, start, pause, resume, stop, release, getLevel, getSilence };
 }
 
 export type Speaking = ReturnType<typeof useSpeaking>;

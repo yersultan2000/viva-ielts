@@ -2,6 +2,17 @@
 
 const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
 export const recognitionSupported = () => !!SR;
+
+const UA = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+export const isAndroid = /Android/i.test(UA);
+export const isIOS = /iPhone|iPad|iPod/i.test(UA) || (typeof navigator !== 'undefined' && /Mac/i.test(UA) && navigator.maxTouchPoints > 1);
+/**
+ * Phone and tablet browsers give the microphone to one consumer at a time: while speech
+ * recognition is listening, a second capture for recording either hears silence or stops
+ * recognition from hearing anything. On these devices the app uses recognition alone.
+ */
+export const micIsExclusive = () => isAndroid || isIOS;
+
 export const ttsSupported = () => typeof window !== 'undefined' && 'speechSynthesis' in window;
 
 export class Recognizer {
@@ -12,6 +23,7 @@ export class Recognizer {
   private sessionConfs = new Map<number, number>();
   private active = false;
   interim = '';
+  firstUpdate = 0;
   lastUpdate = 0;
 
   constructor(private onUpdate: (finalText: string, interim: string) => void, private onError: (code: string) => void) {}
@@ -26,6 +38,8 @@ export class Recognizer {
     this.session = '';
     this.interim = '';
     this.confs = [];
+    this.firstUpdate = 0;
+    this.lastUpdate = 0;
     this.active = true;
     this.spawn();
   }
@@ -34,7 +48,9 @@ export class Recognizer {
     const rec = new SR();
     this.rec = rec;
     rec.lang = 'en-GB';
-    rec.continuous = true;
+    // Android Chrome repeats earlier words in every result when continuous is on, so there
+    // each session takes one utterance and onend starts the next.
+    rec.continuous = !isAndroid;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     this.sessionConfs = new Map();
@@ -50,6 +66,7 @@ export class Recognizer {
       this.session = fin;
       this.interim = interim;
       this.lastUpdate = Date.now();
+      if (!this.firstUpdate && (fin || interim).trim()) this.firstUpdate = this.lastUpdate;
       this.onUpdate(this.text, interim);
     };
     rec.onerror = (e: any) => {

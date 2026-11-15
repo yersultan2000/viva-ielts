@@ -28,7 +28,8 @@ export function Recorder({ maxSec, onDone, startLabel = 'Start recording' }: { m
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const ended = useRef(false);
-  const typing = !sp.canRecognise;
+  const [forceType, setForceType] = useState(false);
+  const typing = !sp.canRecognise || forceType;
 
   const begin = async () => {
     ended.current = false;
@@ -55,7 +56,7 @@ export function Recorder({ maxSec, onDone, startLabel = 'Start recording' }: { m
         {sp.error ? <Notice kind="error" title="Microphone problem">{sp.error}</Notice> : null}
         {typing ? <Notice kind="warn">This browser has no speech recognition, so you will type your answer and timing will not be measured.</Notice> : null}
         <Button variant="primary" size="lg" icon={typing ? 'keyboard' : 'mic'} onClick={begin} busy={busy}>{typing ? 'Type an answer' : startLabel}</Button>
-        {!typing ? <span className="muted small">Up to {fmtTime(maxSec)}. Recording stays on this device.</span> : null}
+        {!typing ? <span className="muted small">Up to {fmtTime(maxSec)}. {sp.transcriptOnly ? 'On phones your answer is transcribed but not recorded, and pauses and pitch are not measured.' : 'Recording stays on this device.'}</span> : null}
       </div>
     );
 
@@ -70,12 +71,13 @@ export function Recorder({ maxSec, onDone, startLabel = 'Start recording' }: { m
       ) : (
         <>
           <div className="spread">
-            <span className={`mic-chip ${sp.status === 'listening' ? 'live' : ''}`}><span className="dot" />{sp.status === 'paused' ? 'Paused' : 'Recording'}</span>
+            <span className={`mic-chip ${sp.status === 'listening' ? 'live' : ''}`}><span className="dot" />{sp.status === 'paused' ? 'Paused' : sp.micOn ? 'Recording' : 'Listening'}</span>
             <span className="timer num" role="timer">{fmtTime(sp.elapsedMs / 1000)} <span className="muted">/ {fmtTime(maxSec)}</span></span>
           </div>
-          <Waveform getLevel={sp.getLevel} active={sp.status === 'listening'} />
+          {sp.micOn ? <Waveform getLevel={sp.getLevel} active={sp.status === 'listening'} /> : null}
           <div className="rec-progress"><div style={{ width: `${100 - (left / maxSec) * 100}%` }} /></div>
-          <p className="live serif">{sp.text} <span className="interim">{sp.interim}</span>{!sp.text && !sp.interim ? <span className="muted">Your words appear here as you speak.</span> : null}</p>
+          <p className="live serif">{sp.text} <span className="interim">{sp.interim}</span>{!sp.text && !sp.interim ? <span className="muted">{sp.elapsedMs > 10000 ? 'Nothing heard yet. Check that your microphone is not muted, then speak.' : 'Your words appear here as you speak.'}</span> : null}</p>
+          {!sp.text && !sp.interim && sp.elapsedMs > 10000 ? <Button size="sm" icon="keyboard" onClick={() => setForceType(true)}>Type my answer instead</Button> : null}
         </>
       )}
       <div className="controls">
